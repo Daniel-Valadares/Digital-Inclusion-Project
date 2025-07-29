@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8" />
+    <title>Mapa Interativo BH</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+        }
+        #map {
+            height: 100vh;
+            width: 100%;
+        }
+        .filtros-container {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 12px;
+            border-radius: 8px;
+            box-shadow: 0 0 8px rgba(0,0,0,0.3);
+            z-index: 1000;
+            width: 220px;
+        }
+        .filtros-container h3 {
+            margin: 0 0 10px 0;
+            font-size: 16px;
+        }
+        .filtros-container label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        .filtros-container input {
+            width: 100%;
+            padding: 6px;
+            margin-bottom: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        .filtros-container button {
+            width: 100%;
+            padding: 8px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .filtros-container button:hover {
+            background-color: #45a049;
+        }
+
+        @media (max-width: 600px) {
+            .filtros-container {
+                width: 90%;
+                left: 5%;
+                right: auto;
+                top: 10px;
+                padding: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="filtros-container">
+    <h3>Filtros</h3>
+    <label for="distancia">Distância (km):</label>
+    <input type="number" id="distancia" placeholder="Ex: 5" min="0" step="0.1" />
+    <button id="aplicarFiltros">Aplicar Filtro</button>
+</div>
+
+<div id="map"></div>
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script>
+    const map = L.map('map').setView([-19.92, -43.94], 12);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    const greenIcon = L.icon({
+        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png',
+        shadowUrl: 'https://unpkg.com/leaflet/dist/images/marker-shadow.png',
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+        shadowSize: [41, 41]
+    });
+
+    let pontos = [];
+    let userLocation = null;
+    let marcadores = [];
+
+    map.locate({setView: false, maxZoom: 16});
+    map.on('locationfound', function(e) {
+        userLocation = e.latlng;
+        L.marker(e.latlng).addTo(map)
+            .bindPopup("Você está aqui").openPopup();
+    });
+
+    fetch("/dados")
+        .then(response => response.json())
+        .then(data => {
+            pontos = data;
+            aplicarFiltros();
+        })
+        .catch(err => {
+            console.error("Erro ao carregar dados do servidor:", err);
+        });
+
+    document.getElementById('aplicarFiltros').addEventListener('click', aplicarFiltros);
+
+    function aplicarFiltros() {
+        const distanciaMax = parseFloat(document.getElementById('distancia').value);
+
+        marcadores.forEach(m => map.removeLayer(m));
+        marcadores = [];
+
+        pontos.forEach(ponto => {
+            const lat = Number(ponto.latitude);
+            const lon = Number(ponto.longitude);
+
+            if (isNaN(lat) || isNaN(lon)) return;
+
+            if (!isNaN(distanciaMax) && userLocation) {
+                const distancia = calcularDistancia(userLocation.lat, userLocation.lng, lat, lon);
+                if (distancia > distanciaMax) return;
+            }
+
+            const nome = ponto.nome_sigla || "Sem nome";
+            const endereco = ponto.endereco || "Sem endereço";
+            const bairro = ponto.bairro || "Sem bairro";
+            const computadores = ponto.computadores_disponiveis || "N/A";
+
+            const marker = L.marker([lat, lon], { icon: greenIcon }).addTo(map)
+                .bindPopup(`<b>${nome}</b><br>
+                            Endereço: ${endereco}<br>
+                            Bairro: ${bairro}<br>
+                            Computadores: ${computadores}`);
+            marcadores.push(marker);
+        });
+    }
+
+    function calcularDistancia(lat1, lon1, lat2, lon2) {
+        const R = 6371;
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
+        const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                  Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                  Math.sin(dLon/2) * Math.sin(dLon/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c;
+    }
+</script>
+
+</body>
+</html>
